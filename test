@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euo pipefail
+
+echo -e "\x1b[34m>> building treediff...\x1b[0m"
+go build -o ./treediff .
+
+echo -e "\x1b[34m>> setting up test data...\x1b[0m"
+tmp1="$(mktemp -d /tmp/treediff_test_XXXXXX)"
+tmp2="${tmp1}_2"
+trap "rm -rf '${tmp1}' '${tmp2}'" EXIT
+
+mkdir -p "${tmp1}/a/b"
+echo "foo" > "${tmp1}/a/b/f"
+echo "foo" > "${tmp1}/a/b/g"
+echo "foo" > "${tmp1}/a/b/h"
+echo "foo" > "${tmp1}/a/b/i"
+echo "foo" > "${tmp1}/a/b/j"
+
+gcp --archive --link "${tmp1}" "${tmp2}"
+
+# change nothing
+# (a/b/f)
+
+# rewrite but change nothing
+rm "${tmp2}/a/b/g"
+echo "foo" > "${tmp2}/a/b/g"
+
+# change contents
+rm "${tmp2}/a/b/h"
+echo "bar" > "${tmp2}/a/b/h"
+
+# change stat
+rm "${tmp2}/a/b/i"
+echo "bar" > "${tmp2}/a/b/i"
+chmod 777 "${tmp2}/a/b/i"
+
+# remove
+rm "${tmp2}/a/b/j"
+
+# add
+touch "${tmp2}/a/b/k"
+
+echo -e "\x1b[34m>> running tests...\x1b[0m"
+# format output in one line just to make it easier to compare.
+expected="A:a/b/k;D:a/b/j;M:a/b/h;M:a/b/i;"
+actual="$(
+  ./treediff "${tmp1}" "${tmp2}" | \
+    sort | \
+    awk '{ ORS = ";" ; OFS = ":" } { print $1, $2 }'
+)"
+
+if [[ "${actual}" != "${expected}" ]]; then
+  >&2 echo -e "\x1b[31mexpected output:\n  ${expected}\nbut got:\n  ${actual}\x1b[0m"
+  exit 1
+fi
+echo -e "\x1b[32mok!\x1b[0m"
+

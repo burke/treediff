@@ -30,7 +30,12 @@ type walkRequest struct {
 // Changes also specifically does not consider mtime/ctime changes to be
 // sufficient to consider a file "changed" -- files with only mtime changes but
 // no other changes (including contents) will not be reported.
-func Changes(dir1, dir2 string) (changes []Change, err error) {
+//
+// The third argument specifies a list of subtrees to ignore completely. No
+// wildcard or glob matching is performed, and names must be complete paths
+// rooted at the shared root of dir1 and dir2 -- for example, ".git" would
+// ignore changes between dir1/.git and dir2/.git.
+func Changes(dir1, dir2 string, ignores []string) (changes []Change, err error) {
 	if !strings.HasSuffix(dir1, "/") {
 		dir1 += "/"
 	}
@@ -43,6 +48,7 @@ func Changes(dir1, dir2 string) (changes []Change, err error) {
 		compareContentsRequests: make(chan compareContentsRequest, 32),
 		walkRequests:            make(chan walkRequest, 4096),
 		changes:                 make(chan Change, 16),
+		ignores:                 ignores,
 	}
 
 	var workers sync.WaitGroup
@@ -60,7 +66,7 @@ func Changes(dir1, dir2 string) (changes []Change, err error) {
 	// Spawn workers to recursively compare two parallel directories. Each
 	// invocation will enqueue more requests for children.
 	workers.Add(walkRequestWorkers)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < walkRequestWorkers; i++ {
 		go func() {
 			defer workers.Done()
 			for req := range w.walkRequests {
@@ -75,7 +81,7 @@ func Changes(dir1, dir2 string) (changes []Change, err error) {
 	// Spawn workers to compare two parallel files which may or may not have
 	// identical contents, recording a change if the contents differ.
 	workers.Add(compareContentsRequestWorkers)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < compareContentsRequestWorkers; i++ {
 		go func() {
 			defer workers.Done()
 			for req := range w.compareContentsRequests {

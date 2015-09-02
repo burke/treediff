@@ -18,7 +18,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	changes, err := diff.Changes(os.Args[1], os.Args[2])
+	var ign []string
+	lower := os.Args[1]
+	upper := os.Args[2]
+	if os.Args[1] == "-ignore" {
+		ign = append(ign, os.Args[2])
+		lower = os.Args[3]
+		upper = os.Args[4]
+	}
+
+	changes, err := diff.Changes(lower, upper, ign)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "treediff encountered an error: %s\n", err)
 		os.Exit(1)

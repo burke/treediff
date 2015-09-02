@@ -16,6 +16,7 @@ type walker struct {
 	walkRequests            chan walkRequest
 	changes                 chan Change
 	requests                sync.WaitGroup
+	ignores                 []string
 }
 
 func (w *walker) walk(path string, i1, i2 os.FileInfo) (err error) {
@@ -118,6 +119,10 @@ func (w *walker) walk(path string, i1, i2 os.FileInfo) (err error) {
 	// iterated, stat the name under each root, and recurse the pair of them:
 	for _, name := range names {
 		fname := filepath.Join(path, name)
+		if w.shouldIgnore(fname) {
+			continue
+		}
+
 		var cInfo1, cInfo2 os.FileInfo
 		if is1Dir {
 			cInfo1, err = os.Lstat(filepath.Join(w.dir1, fname)) // lstat(2): fs access
@@ -131,10 +136,7 @@ func (w *walker) walk(path string, i1, i2 os.FileInfo) (err error) {
 				return err
 			}
 		}
-		// TODO(burke): long-running workers instead of one-offs
-		// if err = w.walk(fname, cInfo1, cInfo2); err != nil {
-		// 	return err
-		// }
+
 		w.requests.Add(1)
 		select {
 		case w.walkRequests <- walkRequest{fname, cInfo1, cInfo2}:
@@ -145,6 +147,15 @@ func (w *walker) walk(path string, i1, i2 os.FileInfo) (err error) {
 		}
 	}
 	return nil
+}
+
+func (w *walker) shouldIgnore(path string) bool {
+	for _, ign := range w.ignores {
+		if path == ign {
+			return true
+		}
+	}
+	return false
 }
 
 func statDifferent(o *syscall.Stat_t, n *syscall.Stat_t) bool {

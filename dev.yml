@@ -1,0 +1,8 @@
+name: treediff
+
+up:
+  - go: '1.7'
+
+commands:
+  build: 'go build'
+  test: 'go test ./...'
